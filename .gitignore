@@ -6,3 +6,5 @@ __pycache__/
 
 # Dataset
 data/*.csv
+!data/creditcard_sample.csv
+

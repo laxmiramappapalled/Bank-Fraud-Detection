@@ -1,11 +1,9 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from pathlib import Path
-import sys
+import joblib
+import plotly.figure_factory as ff
 
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from pathlib import Path
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -15,18 +13,30 @@ from sklearn.metrics import (
     classification_report
 )
 
-# Page configuration
+# --------------------------------
+# PAGE CONFIGURATION
+# --------------------------------
+
 st.set_page_config(
-    page_title="Model Reports",
-    page_icon="📈",
+    page_title="Fraud Detection Reports",
+    page_icon="📑",
     layout="wide"
 )
 
-# Project directory
-ROOT_DIR = Path(__file__).resolve().parent.parent
+# --------------------------------
+# PATHS
+# --------------------------------
 
-# Load CSS
-CSS_PATH = ROOT_DIR / "assets" / "style.css"
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+DATA_PATH = BASE_DIR / "data" / "creditcard_sample.csv"
+MODEL_PATH = BASE_DIR / "model" / "fraud_model.pkl"
+SCALER_PATH = BASE_DIR / "model" / "scaler.pkl"
+CSS_PATH = BASE_DIR / "assets" / "style.css"
+
+# --------------------------------
+# LOAD CSS
+# --------------------------------
 
 if CSS_PATH.exists():
     with open(CSS_PATH, encoding="utf-8") as f:
@@ -35,143 +45,192 @@ if CSS_PATH.exists():
             unsafe_allow_html=True
         )
 
-# Import model loader
-sys.path.insert(0, str(ROOT_DIR / "src"))
+# --------------------------------
+# PAGE TITLE
+# --------------------------------
 
-from prediction import load_model
+st.title("📑 Fraud Detection Reports")
+st.subheader("Machine Learning Model Performance Analysis")
 
-# Page title
-st.title("📈 Model Performance Reports")
-st.markdown("### Machine Learning Evaluation")
+st.markdown("---")
 
-st.divider()
+# --------------------------------
+# CHECK FILES
+# --------------------------------
 
-DATA_PATH = ROOT_DIR / "data" / "creditcard.csv"
+if not DATA_PATH.exists():
+    st.error("Dataset not found.")
+    st.stop()
+
+if not MODEL_PATH.exists() or not SCALER_PATH.exists():
+    st.error("Trained model or scaler file not found.")
+    st.stop()
+
+# --------------------------------
+# LOAD DATA AND MODEL
+# --------------------------------
 
 try:
-    if not DATA_PATH.exists():
-        st.error("Dataset not found.")
-        st.stop()
+    data = pd.read_csv(DATA_PATH)
 
-    # Load dataset
-    @st.cache_data
-    def load_data():
-        return pd.read_csv(DATA_PATH)
+    model = joblib.load(MODEL_PATH)
 
-    data = load_data()
+    scaler = joblib.load(SCALER_PATH)
 
-    # Load trained model
-    model, scaler = load_model()
+except Exception as e:
+    st.error(f"Error loading project files: {e}")
+    st.stop()
 
-    st.success("Trained Model Loaded Successfully")
+# --------------------------------
+# PREPARE DATA
+# --------------------------------
 
-    # Prepare test data
-    data = data.drop_duplicates().dropna()
+if "Class" not in data.columns:
+    st.error("Class column is missing from dataset.")
+    st.stop()
 
-    X = data.drop("Class", axis=1)
-    y = data["Class"]
+X = data.drop(columns=["Class"])
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.20,
-        random_state=42,
-        stratify=y
-    )
+y = data["Class"].astype(int)
 
-    X_test = X_test.copy()
+X = X.reindex(columns=model.feature_names_in_)
 
-    if "Amount" in X_test.columns:
-        X_test["Amount"] = scaler.transform(
-            X_test[["Amount"]]
-        ).ravel()
+if "Amount" in X.columns:
+    X = X.copy()
+    X["Amount"] = scaler.transform(
+        X[["Amount"]]
+    ).ravel()
 
-    # Predictions
-    predictions = model.predict(X_test)
+# --------------------------------
+# MODEL PREDICTIONS
+# --------------------------------
 
-    accuracy = accuracy_score(y_test, predictions) * 100
-    precision = precision_score(
-        y_test, predictions, zero_division=0
-    ) * 100
-    recall = recall_score(
-        y_test, predictions, zero_division=0
-    ) * 100
-    f1 = f1_score(
-        y_test, predictions, zero_division=0
-    ) * 100
+try:
+    y_pred = model.predict(X)
 
-    # Performance metrics
-    st.subheader("Model Performance Metrics")
+except Exception as e:
+    st.error(f"Prediction error: {e}")
+    st.stop()
 
-    col1, col2, col3, col4 = st.columns(4)
+# --------------------------------
+# CALCULATE METRICS
+# --------------------------------
 
-    col1.metric("Accuracy", f"{accuracy:.2f}%")
-    col2.metric("Precision", f"{precision:.2f}%")
-    col3.metric("Recall", f"{recall:.2f}%")
-    col4.metric("F1 Score", f"{f1:.2f}%")
+accuracy = accuracy_score(y, y_pred) * 100
 
-    st.divider()
+precision = precision_score(
+    y, y_pred, zero_division=0
+) * 100
 
-    # Confusion matrix
-    st.subheader("Confusion Matrix")
+recall = recall_score(
+    y, y_pred, zero_division=0
+) * 100
 
-    matrix = confusion_matrix(y_test, predictions)
+f1 = f1_score(
+    y, y_pred, zero_division=0
+) * 100
 
-    matrix_df = pd.DataFrame(
-        matrix,
-        index=["Actual Genuine", "Actual Fraud"],
-        columns=["Predicted Genuine", "Predicted Fraud"]
-    )
+# --------------------------------
+# DISPLAY METRICS
+# --------------------------------
 
-    fig = px.imshow(
-        matrix_df,
-        text_auto=True,
-        color_continuous_scale="Blues",
-        title="Model Confusion Matrix"
-    )
+st.markdown("### 📊 Model Performance")
 
-    st.plotly_chart(fig, use_container_width=True)
+col1, col2, col3, col4 = st.columns(4)
 
-    st.divider()
+col1.metric("Accuracy", f"{accuracy:.2f}%")
+col2.metric("Precision", f"{precision:.2f}%")
+col3.metric("Recall", f"{recall:.2f}%")
+col4.metric("F1 Score", f"{f1:.2f}%")
 
-    # Classification report
-    st.subheader("Classification Report")
+st.markdown("---")
 
-    report = classification_report(
-        y_test,
-        predictions,
-        target_names=["Genuine", "Fraud"],
-        zero_division=0,
-        output_dict=True
-    )
+# --------------------------------
+# CONFUSION MATRIX
+# --------------------------------
 
-    report_df = pd.DataFrame(report).transpose()
+st.markdown("### 🔍 Confusion Matrix")
 
-    st.dataframe(
-        report_df.round(4),
-        use_container_width=True
-    )
+cm = confusion_matrix(
+    y,
+    y_pred,
+    labels=[0, 1]
+)
 
-    st.divider()
+fig = ff.create_annotated_heatmap(
+    z=cm,
+    x=["Predicted Genuine", "Predicted Fraud"],
+    y=["Actual Genuine", "Actual Fraud"],
+    colorscale="Blues",
+    showscale=True
+)
 
-    # Explanation
-    st.subheader("Understanding the Metrics")
+fig.update_layout(
+    title="Confusion Matrix",
+    xaxis_title="Predicted Class",
+    yaxis_title="Actual Class"
+)
 
-    st.write("""
-    - **Accuracy:** Overall percentage of correct predictions.
-    - **Precision:** How many predicted fraud transactions were actually fraud.
-    - **Recall:** How many actual fraud transactions the model detected.
-    - **F1 Score:** Balance between precision and recall.
-    - **Confusion Matrix:** Shows correct and incorrect predictions.
-    """)
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
 
-    st.caption(
-        "For educational and demonstration purposes only. "
-        "This model is not validated for real banking decisions."
-    )
+# --------------------------------
+# CLASSIFICATION REPORT
+# --------------------------------
 
-except FileNotFoundError as error:
-    st.error(str(error))
+st.markdown("---")
 
-except Exception as error:
-    st.error(f"An error occurred: {error}")
+st.markdown("### 📋 Classification Report")
+
+report = classification_report(
+    y,
+    y_pred,
+    target_names=["Genuine", "Fraud"],
+    output_dict=True,
+    zero_division=0
+)
+
+report_df = pd.DataFrame(report).transpose()
+
+st.dataframe(
+    report_df.round(3),
+    use_container_width=True
+)
+
+# --------------------------------
+# SUMMARY
+# --------------------------------
+
+st.markdown("---")
+
+st.markdown("### 📝 Evaluation Summary")
+
+st.write(f"Total Transactions Evaluated: {len(data):,}")
+
+st.write(
+    f"Correct Predictions: {(y == y_pred).sum():,}"
+)
+
+st.write(
+    f"Incorrect Predictions: {(y != y_pred).sum():,}"
+)
+
+st.info(
+    "Note: These evaluation results are calculated "
+    "using the sample dataset included with this application. "
+    "They are intended for educational and demonstration purposes."
+)
+
+# --------------------------------
+# FOOTER
+# --------------------------------
+
+st.markdown("---")
+
+st.caption(
+    "Bank Fraud Detection System | "
+    "Machine Learning Project | "
+    "Developed by Laxmi Ramappa Palled"
+)
