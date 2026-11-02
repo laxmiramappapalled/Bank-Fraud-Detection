@@ -4,14 +4,7 @@ import joblib
 import plotly.graph_objects as go
 
 from pathlib import Path
-from sklearn.metrics import (
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    confusion_matrix,
-    classification_report
-)
+from io import StringIO
 
 # --------------------------------
 # PAGE CONFIGURATION
@@ -29,9 +22,7 @@ st.set_page_config(
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-DATA_PATH = BASE_DIR / "data" / "creditcard_sample.csv"
-MODEL_PATH = BASE_DIR / "model" / "fraud_model.pkl"
-SCALER_PATH = BASE_DIR / "model" / "scaler.pkl"
+RESULTS_PATH = BASE_DIR / "model" / "evaluation_results.pkl"
 CSS_PATH = BASE_DIR / "assets" / "style.css"
 
 # --------------------------------
@@ -50,95 +41,41 @@ if CSS_PATH.exists():
 # --------------------------------
 
 st.title("📑 Fraud Detection Reports")
-st.subheader("Machine Learning Model Performance Analysis")
+st.subheader("Independent Test Performance Analysis")
 
 st.markdown("---")
 
 # --------------------------------
-# CHECK FILES
+# CHECK RESULTS FILE
 # --------------------------------
 
-if not DATA_PATH.exists():
-    st.error("Dataset not found.")
-    st.stop()
-
-if not MODEL_PATH.exists() or not SCALER_PATH.exists():
-    st.error("Trained model or scaler file not found.")
+if not RESULTS_PATH.exists():
+    st.error("Evaluation results not found. Please train the model first.")
     st.stop()
 
 # --------------------------------
-# LOAD DATA AND MODEL
+# LOAD EVALUATION RESULTS
 # --------------------------------
 
 try:
-    data = pd.read_csv(DATA_PATH)
-    model = joblib.load(MODEL_PATH)
-    scaler = joblib.load(SCALER_PATH)
+    results = joblib.load(RESULTS_PATH)
 
 except Exception as e:
-    st.error(f"Error loading project files: {e}")
+    st.error(f"Error loading evaluation results: {e}")
     st.stop()
 
 # --------------------------------
-# PREPARE DATA
-# --------------------------------
-
-if "Class" not in data.columns:
-    st.error("Class column is missing from dataset.")
-    st.stop()
-
-X = data.drop(columns=["Class"])
-y = data["Class"].astype(int)
-
-X = X.reindex(columns=model.feature_names_in_)
-
-if "Amount" in X.columns:
-    X = X.copy()
-    X["Amount"] = scaler.transform(
-        X[["Amount"]]
-    ).ravel()
-
-# --------------------------------
-# MODEL PREDICTIONS
-# --------------------------------
-
-try:
-    y_pred = model.predict(X)
-
-except Exception as e:
-    st.error(f"Prediction error: {e}")
-    st.stop()
-
-# --------------------------------
-# CALCULATE METRICS
-# --------------------------------
-
-accuracy = accuracy_score(y, y_pred) * 100
-
-precision = precision_score(
-    y, y_pred, zero_division=0
-) * 100
-
-recall = recall_score(
-    y, y_pred, zero_division=0
-) * 100
-
-f1 = f1_score(
-    y, y_pred, zero_division=0
-) * 100
-
-# --------------------------------
-# DISPLAY METRICS
+# MODEL PERFORMANCE
 # --------------------------------
 
 st.markdown("### 📊 Model Performance")
 
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("Accuracy", f"{accuracy:.2f}%")
-col2.metric("Precision", f"{precision:.2f}%")
-col3.metric("Recall", f"{recall:.2f}%")
-col4.metric("F1 Score", f"{f1:.2f}%")
+col1.metric("Accuracy", f"{results['accuracy']:.2f}%")
+col2.metric("Precision", f"{results['precision']:.2f}%")
+col3.metric("Recall", f"{results['recall']:.2f}%")
+col4.metric("F1 Score", f"{results['f1_score']:.2f}%")
 
 st.markdown("---")
 
@@ -148,11 +85,7 @@ st.markdown("---")
 
 st.markdown("### 🔍 Confusion Matrix")
 
-cm = confusion_matrix(
-    y,
-    y_pred,
-    labels=[0, 1]
-)
+cm = results["confusion_matrix"]
 
 fig = go.Figure(
     data=go.Heatmap(
@@ -172,7 +105,7 @@ fig = go.Figure(
 )
 
 fig.update_layout(
-    title="Confusion Matrix",
+    title="Independent Test Confusion Matrix",
     xaxis_title="Predicted Class",
     yaxis_title="Actual Class",
     height=450
@@ -191,43 +124,48 @@ st.markdown("---")
 
 st.markdown("### 📋 Classification Report")
 
-report = classification_report(
-    y,
-    y_pred,
-    labels=[0, 1],
-    target_names=["Genuine", "Fraud"],
-    output_dict=True,
-    zero_division=0
-)
+report = results["classification_report"]
 
-report_df = pd.DataFrame(report).transpose()
+try:
+    report_df = pd.read_fwf(
+        StringIO(report),
+        index_col=0
+    )
 
-st.dataframe(
-    report_df.round(3),
-    use_container_width=True
-)
+    st.dataframe(
+        report_df,
+        use_container_width=True
+    )
+
+except Exception:
+    st.code(report)
 
 # --------------------------------
-# SUMMARY
+# EVALUATION SUMMARY
 # --------------------------------
 
 st.markdown("---")
 
 st.markdown("### 📝 Evaluation Summary")
 
-st.write(f"Total Transactions Evaluated: {len(data):,}")
-
 st.write(
-    f"Correct Predictions: {(y == y_pred).sum():,}"
+    f"Total Transactions Evaluated: "
+    f"{results['total_transactions']:,}"
 )
 
 st.write(
-    f"Incorrect Predictions: {(y != y_pred).sum():,}"
+    f"Correct Predictions: "
+    f"{results['correct_predictions']:,}"
+)
+
+st.write(
+    f"Incorrect Predictions: "
+    f"{results['total_transactions'] - results['correct_predictions']:,}"
 )
 
 st.info(
-    "Note: These evaluation results are calculated "
-    "using the sample dataset included with this application. "
+    "These results are calculated using an independent "
+    "20% test dataset that was not used during model training. "
     "They are intended for educational and demonstration purposes."
 )
 

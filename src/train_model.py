@@ -28,14 +28,34 @@ def train_model():
 
     model.fit(X_train, y_train)
 
-    print("Evaluating model...")
+    print("Evaluating independent test data...")
 
     results = evaluate_model(model, X_test, y_test)
 
     os.makedirs("model", exist_ok=True)
 
+    # Save trained model and scaler
     joblib.dump(model, "model/fraud_model.pkl")
     joblib.dump(scaler, "model/scaler.pkl")
+
+    # Save independent test evaluation results
+    evaluation_results = {
+        "accuracy": results["accuracy"],
+        "precision": results["precision"],
+        "recall": results["recall"],
+        "f1_score": results["f1_score"],
+        "confusion_matrix": results["confusion_matrix"],
+        "classification_report": results["classification_report"],
+        "total_transactions": len(y_test),
+        "correct_predictions": int(
+            (model.predict(X_test) == y_test).sum()
+        )
+    }
+
+    joblib.dump(
+        evaluation_results,
+        "model/evaluation_results.pkl"
+    )
 
     print("\nMODEL TRAINING COMPLETED")
 
@@ -46,6 +66,8 @@ def train_model():
 
     print("\nConfusion Matrix:")
     print(results["confusion_matrix"])
+
+    print("\nIndependent test results saved successfully.")
 
 
 if __name__ == "__main__":
