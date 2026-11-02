@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import joblib
-import plotly.figure_factory as ff
+import plotly.graph_objects as go
 
 from pathlib import Path
 from sklearn.metrics import (
@@ -72,9 +72,7 @@ if not MODEL_PATH.exists() or not SCALER_PATH.exists():
 
 try:
     data = pd.read_csv(DATA_PATH)
-
     model = joblib.load(MODEL_PATH)
-
     scaler = joblib.load(SCALER_PATH)
 
 except Exception as e:
@@ -90,7 +88,6 @@ if "Class" not in data.columns:
     st.stop()
 
 X = data.drop(columns=["Class"])
-
 y = data["Class"].astype(int)
 
 X = X.reindex(columns=model.feature_names_in_)
@@ -157,18 +154,28 @@ cm = confusion_matrix(
     labels=[0, 1]
 )
 
-fig = ff.create_annotated_heatmap(
-    z=cm,
-    x=["Predicted Genuine", "Predicted Fraud"],
-    y=["Actual Genuine", "Actual Fraud"],
-    colorscale="Blues",
-    showscale=True
+fig = go.Figure(
+    data=go.Heatmap(
+        z=cm,
+        x=["Predicted Genuine", "Predicted Fraud"],
+        y=["Actual Genuine", "Actual Fraud"],
+        colorscale="Blues",
+        showscale=True,
+        text=cm,
+        texttemplate="%{text}",
+        hovertemplate=(
+            "Actual: %{y}<br>"
+            "Predicted: %{x}<br>"
+            "Count: %{z}<extra></extra>"
+        )
+    )
 )
 
 fig.update_layout(
     title="Confusion Matrix",
     xaxis_title="Predicted Class",
-    yaxis_title="Actual Class"
+    yaxis_title="Actual Class",
+    height=450
 )
 
 st.plotly_chart(
@@ -187,6 +194,7 @@ st.markdown("### 📋 Classification Report")
 report = classification_report(
     y,
     y_pred,
+    labels=[0, 1],
     target_names=["Genuine", "Fraud"],
     output_dict=True,
     zero_division=0
