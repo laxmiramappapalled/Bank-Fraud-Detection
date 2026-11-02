@@ -1,0 +1,39 @@
+/* Main application styling */
+
+.stApp {
+    background-color: #f4f7fb;
+}
+
+/* Main headings */
+h1, h2, h3 {
+    color: #111827;
+    font-weight: 700;
+}
+
+/* Metric cards */
+[data-testid="stMetric"] {
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Buttons */
+.stButton > button {
+    background-color: #111827;
+    color: white;
+    border-radius: 8px;
+    border: none;
+    padding: 10px 20px;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #111827;
+}
+
+/* Sidebar text */
+[data-testid="stSidebar"] * {
+    color: white;
+}
